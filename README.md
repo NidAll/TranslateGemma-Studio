@@ -9,16 +9,76 @@ Local translation UI for `google/translategemma-4b-it` running on llama.cpp.
   `llama-server -hf mradermacher/translategemma-4b-it-GGUF:Q6_K --jinja -c 0 --host 127.0.0.1 --port 8033 --flash-attn on`
 - Serves a Next.js web UI on `http://127.0.0.1:3000`.
 
-## Run locally
+## Installation and setup
 
-Prerequisites:
+### Requirements
 
-- Install `llama.cpp` and ensure `llama-server` is available (or set `LLAMA_SERVER_CMD`).
-- Download a GGUF build of TranslateGemma from
-  `https://huggingface.co/mradermacher/translategemma-4b-it-GGUF` and choose a
-  quantization that fits your VRAM.
-- Optional: install the fastText CLI and download the language ID model
-  (`lid.176.bin`) if you want auto language detection.
+- Node.js 18+ and npm
+- `llama.cpp` with `llama-server`
+- A TranslateGemma GGUF model file
+- Optional: fastText language ID model for auto detection
+
+### 1) Get the model
+
+Download a GGUF build of TranslateGemma from:
+`https://huggingface.co/mradermacher/translategemma-4b-it-GGUF`
+
+Choose a quantization that fits your VRAM (Q4, Q5, Q6, etc).
+
+### 2) Install llama.cpp
+
+Build or install `llama.cpp` and make sure `llama-server` is available:
+
+- Windows: locate `llama-server.exe` (set `LLAMA_SERVER_CMD` if not on PATH)
+- Linux: ensure `llama-server` is on PATH (or set `LLAMA_SERVER_CMD`)
+
+### 3) Install dependencies
+
+```bash
+git clone https://github.com/NidAll/TranslateGemma-Studio
+cd TranslateGemma-Studio
+```
+
+```bash
+npm install
+```
+
+### 4) (Optional) Enable auto language detection
+
+This app can auto-detect the source language using fastText.
+
+Install fastText and download the model:
+
+- Windows: `python -m pip install fasttext-wheel` and use `scripts/fasttext.cmd`.
+- Linux: install the fastText CLI (package or build from source).
+- Download `lid.176.bin` from `https://fasttext.cc/docs/en/language-identification.html`.
+- Set `FASTTEXT_MODEL` to the full path of `lid.176.bin`.
+- If the `fasttext` executable is not on PATH, set `FASTTEXT_CMD`.
+  On Windows, `scripts/fasttext.cmd` is auto-detected if present.
+
+### 5) Start the app
+
+```bash
+npm run dev
+```
+
+The UI will load while the model boots. The first translation may take a minute.
+
+### Example environment settings
+
+Windows (PowerShell):
+```powershell
+$env:LLAMA_SERVER_CMD = "C:\llama cpp\llama-server.exe"
+$env:FASTTEXT_CMD = "C:\Translator\scripts\fasttext.cmd"
+$env:FASTTEXT_MODEL = "C:\Translator\models\lid.176.bin"
+```
+
+Linux:
+```bash
+export LLAMA_SERVER_CMD=/path/to/llama-server
+export FASTTEXT_CMD=fasttext
+export FASTTEXT_MODEL=/path/to/lid.176.bin
+```
 
 ### What is TranslateGemma (Gemma 3 Translate)?
 
@@ -26,42 +86,13 @@ TranslateGemma is a translation-focused variant of the Gemma 3 family released b
 Google. It is optimized for text translation across 55 languages and is small
 enough to run locally with the right quantization.
 
-### Windows quick start
+### Quick notes for llama.cpp model loading
 
-- Install or build `llama.cpp` for Windows and locate `llama-server.exe`.
-- Set `LLAMA_SERVER_CMD` if `llama-server.exe` is not on your PATH.
-- Place the downloaded GGUF file somewhere accessible or let `llama.cpp` pull it
-  via the `-hf` flag (default in this project).
+By default the server starts with:
+`llama-server -hf mradermacher/translategemma-4b-it-GGUF:Q6_K --jinja -c 0 --host 127.0.0.1 --port 8033 --flash-attn on`
 
-### Linux quick start
-
-- Build or install `llama.cpp` and ensure `llama-server` is on your PATH.
-- If `llama-server` is not on PATH, set `LLAMA_SERVER_CMD` to its full path.
-- Use the GGUF model from the Hugging Face link above and select the quant
-  matching your GPU memory.
-
-### Auto language detection (fastText LID)
-
-This app can auto-detect the source language using fastText. To enable it:
-
-- Install the fastText CLI, or install the Python wheel and use the included
-  wrapper at `scripts/fasttext.cmd`.
-- Download `lid.176.bin` from `https://fasttext.cc/docs/en/language-identification.html`.
-- Set `FASTTEXT_MODEL` to the full path of `lid.176.bin`.
-- If the `fasttext` executable is not on PATH, set `FASTTEXT_CMD`.
-  On Windows, `scripts/fasttext.cmd` is auto-detected if present.
-
-1) Install dependencies:
-```bash
-npm install
-```
-
-2) Start the app:
-```bash
-npm run dev
-```
-
-The UI will load while the model boots. The first translation may take a minute.
+If you want to load a local GGUF file instead, set `LLAMA_MODEL` to the local
+path (or override `LLAMA_SERVER_ARGS`).
 
 ## UI notes
 
