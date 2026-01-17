@@ -27,10 +27,8 @@ Choose a quantization that fits your VRAM (Q4, Q5, Q6, etc).
 
 ### 2) Install llama.cpp
 
-Build or install `llama.cpp` and make sure `llama-server` is available:
-
-- Windows: locate `llama-server.exe` (set `LLAMA_SERVER_CMD` if not on PATH)
-- Linux: ensure `llama-server` is on PATH (or set `LLAMA_SERVER_CMD`)
+If you want to know how to install it visit:
+`https://github.com/ggml-org/llama.cpp?tab=readme-ov-file#quick-start`
 
 ### 3) Install dependencies
 
