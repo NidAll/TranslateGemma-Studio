@@ -21,6 +21,8 @@ export default function Home() {
   const [error, setError] = useState("");
   const [chunkingEnabled, setChunkingEnabled] = useState(false);
   const [chunkStatus, setChunkStatus] = useState("");
+  const [detectedLang, setDetectedLang] = useState("");
+  const [detectedLangName, setDetectedLangName] = useState("");
   const [copied, setCopied] = useState(false);
   const [theme, setTheme] = useState("light");
   const abortRef = useRef(null);
@@ -30,6 +32,7 @@ export default function Home() {
     promptOverheadTokens: DEFAULT_PROMPT_OVERHEAD_TOKENS
   });
   const inputTokenCount = estimateTokens(inputText);
+  const sourceOptions = [{ code: "auto", name: "Auto detect" }, ...languages];
 
   useEffect(() => {
     const stored = window.localStorage.getItem("theme");
@@ -46,7 +49,17 @@ export default function Home() {
     document.documentElement.dataset.theme = next;
   };
 
+  useEffect(() => {
+    if (sourceLang !== "auto") {
+      setDetectedLang("");
+      setDetectedLangName("");
+    }
+  }, [sourceLang]);
+
   const handleSwap = () => {
+    if (sourceLang === "auto") {
+      return;
+    }
     setSourceLang(targetLang);
     setTargetLang(sourceLang);
     setError("");
@@ -58,15 +71,49 @@ export default function Home() {
     setChunkStatus("");
   };
 
-  const translateOnce = async (text, signal) => {
+  const detectLanguage = async (text, signal) => {
+    const response = await fetch("/api/detect", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ text }),
+      signal
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(
+        payload?.details || payload?.error || "Language detection failed."
+      );
+    }
+
+    const payload = await response.json();
+    const detectedSourceLang = payload?.detectedSourceLang || "";
+    if (!detectedSourceLang) {
+      throw new Error("Unable to detect the source language.");
+    }
+
+    return {
+      code: detectedSourceLang,
+      name: payload?.detectedSourceName || detectedSourceLang
+    };
+  };
+
+  const translateOnce = async (
+    text,
+    signal,
+    sourceOverride,
+    targetOverride
+  ) => {
     const response = await fetch("/api/translate", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        sourceLang,
-        targetLang,
+        sourceLang: sourceOverride || sourceLang,
+        targetLang: targetOverride || targetLang,
         text,
         stream: false
       }),
@@ -75,14 +122,21 @@ export default function Home() {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      throw new Error(payload?.error || "Translation failed.");
+      throw new Error(payload?.details || payload?.error || "Translation failed.");
     }
 
     const payload = await response.json();
     return sanitizeTranslation(payload?.translation || "");
   };
 
-  const streamTranslation = async (text, signal, onPartial) => {
+  const streamTranslation = async ({
+    text,
+    signal,
+    sourceOverride,
+    targetOverride,
+    onPartial,
+    onMeta
+  }) => {
     const response = await fetch("/api/translate", {
       method: "POST",
       headers: {
@@ -90,8 +144,8 @@ export default function Home() {
         Accept: "text/event-stream"
       },
       body: JSON.stringify({
-        sourceLang,
-        targetLang,
+        sourceLang: sourceOverride || sourceLang,
+        targetLang: targetOverride || targetLang,
         text,
         stream: true
       }),
@@ -100,11 +154,16 @@ export default function Home() {
 
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      throw new Error(payload?.error || "Translation failed.");
+      throw new Error(payload?.details || payload?.error || "Translation failed.");
     }
 
     if (!response.body) {
-      const fallback = await translateOnce(text, signal);
+      const fallback = await translateOnce(
+        text,
+        signal,
+        sourceOverride,
+        targetOverride
+      );
       if (onPartial) {
         onPartial(fallback);
       }
@@ -167,6 +226,13 @@ export default function Home() {
             throw new Error(parsed.error);
           }
 
+          if (parsed?.detectedSourceLang && onMeta) {
+            onMeta({
+              detectedSourceLang: parsed.detectedSourceLang,
+              detectedSourceName: parsed.detectedSourceName || ""
+            });
+          }
+
           const delta =
             parsed?.choices?.[0]?.delta?.content ??
             parsed?.choices?.[0]?.delta?.text ??
@@ -182,7 +248,7 @@ export default function Home() {
     return sanitizeTranslation(assembled);
   };
 
-  const translateChunked = async (signal) => {
+  const translateChunked = async (signal, sourceOverride, targetOverride) => {
     const chunks = chunkText(inputText, inputTokenLimit);
     if (!chunks.length) {
       return;
@@ -198,13 +264,15 @@ export default function Home() {
       }
       const base = assembled;
       const separator = chunks[index].separator || "";
-      const translation = await streamTranslation(
-        chunks[index].text,
+      const translation = await streamTranslation({
+        text: chunks[index].text,
         signal,
-        (partial) => {
+        sourceOverride,
+        targetOverride,
+        onPartial: (partial) => {
           setOutputText(base + partial);
         }
-      );
+      });
 
       if (translation) {
         assembled += translation;
@@ -235,16 +303,36 @@ export default function Home() {
     setCopied(false);
     setChunkStatus("");
     setOutputText("");
+    if (sourceLang === "auto") {
+      setDetectedLang("");
+      setDetectedLangName("");
+    }
 
     try {
+      let effectiveSource = sourceLang;
+      if (sourceLang === "auto") {
+        const detected = await detectLanguage(inputText, controller.signal);
+        effectiveSource = detected.code;
+        setDetectedLang(detected.code);
+        setDetectedLangName(detected.name);
+      }
+
       if (chunkingEnabled) {
-        await translateChunked(controller.signal);
+        await translateChunked(controller.signal, effectiveSource, targetLang);
       } else {
-        const finalText = await streamTranslation(
-          inputText,
-          controller.signal,
-          (partial) => setOutputText(partial)
-        );
+        const finalText = await streamTranslation({
+          text: inputText,
+          signal: controller.signal,
+          sourceOverride: effectiveSource,
+          targetOverride: targetLang,
+          onPartial: (partial) => setOutputText(partial),
+          onMeta: (meta) => {
+            if (meta?.detectedSourceLang) {
+              setDetectedLang(meta.detectedSourceLang);
+              setDetectedLangName(meta.detectedSourceName || "");
+            }
+          }
+        });
         setOutputText(finalText);
       }
     } catch (err) {
@@ -295,6 +383,12 @@ export default function Home() {
       ? "Long text mode will split this into smaller chunks."
       : "Input exceeds the context limit. Enable long text mode to auto-chunk."
     : "";
+  const sourceTag =
+    sourceLang === "auto" ? detectedLang || "auto" : sourceLang;
+  const detectionNote =
+    sourceLang === "auto" && detectedLang
+      ? `Detected source: ${detectedLangName || detectedLang} (${detectedLang})`
+      : "";
 
   return (
     <div className="shell">
@@ -318,14 +412,19 @@ export default function Home() {
               value={sourceLang}
               onChange={(event) => setSourceLang(event.target.value)}
             >
-              {languages.map((language) => (
+              {sourceOptions.map((language) => (
                 <option key={language.code} value={language.code}>
                   {language.name} ({language.code})
                 </option>
               ))}
             </select>
           </label>
-          <button className="swap" type="button" onClick={handleSwap}>
+          <button
+            className="swap"
+            type="button"
+            onClick={handleSwap}
+            disabled={sourceLang === "auto"}
+          >
             Swap
           </button>
           <label>
@@ -342,6 +441,12 @@ export default function Home() {
             </select>
           </label>
         </div>
+
+        {detectionNote ? (
+          <div className="detect-row" role="status" aria-live="polite">
+            <span className="detect-pill">{detectionNote}</span>
+          </div>
+        ) : null}
 
         <div className="action-row">
           <button
@@ -399,7 +504,7 @@ export default function Home() {
       <section className="panels">
         <div className="panel">
           <div className="panel-head">
-            <span className="tag">{sourceLang || "src"}</span>
+            <span className="tag">{sourceTag || "src"}</span>
             <div className="panel-actions">
               <button
                 className="ghost"

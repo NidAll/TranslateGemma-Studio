@@ -2,6 +2,7 @@ import express from "express";
 import next from "next";
 import { Readable } from "node:stream";
 import { ensureLlamaServer, LLAMA_SERVER_URL } from "./llama.js";
+import { detectLanguage } from "./fasttext.js";
 import { normalizeLangCode } from "./lang.js";
 import languages from "../shared/languages.js";
 import { sanitizeTranslation } from "../shared/sanitize.js";
@@ -71,9 +72,32 @@ server.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+server.post("/api/detect", async (req, res) => {
+  const inputText = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+  if (!inputText) {
+    return res.status(400).json({ error: "Text is required." });
+  }
+
+  try {
+    const detection = await detectLanguage(inputText);
+    return res.json({
+      detectedSourceLang: detection.code,
+      detectedSourceName: languageName(detection.code),
+      probability: detection.probability
+    });
+  } catch (err) {
+    return res.status(500).json({
+      error: "Language detection failed.",
+      details: err.message || String(err)
+    });
+  }
+});
+
 server.post("/api/translate", async (req, res) => {
   const { sourceLang, targetLang, text } = req.body || {};
-  const normalizedSource = normalizeLangCode(sourceLang);
+  const rawSource = typeof sourceLang === "string" ? sourceLang.trim() : "";
+  const wantsAuto = rawSource.toLowerCase() === "auto";
+  let normalizedSource = wantsAuto ? null : normalizeLangCode(rawSource);
   const normalizedTarget = normalizeLangCode(targetLang);
   const inputText = typeof text === "string" ? text.trim() : "";
   const wantsStream = Boolean(req.body?.stream);
@@ -84,10 +108,9 @@ server.post("/api/translate", async (req, res) => {
     promptOverheadTokens: PROMPT_OVERHEAD_TOKENS
   });
 
-  if (!normalizedSource || !normalizedTarget) {
+  if (!normalizedTarget) {
     return res.status(400).json({
-      error:
-        "Invalid language code. Use ISO 639-1 with optional region, e.g. en or en-US."
+      error: "Invalid target language code. Use ISO 639-1 with optional region."
     });
   }
 
@@ -99,6 +122,31 @@ server.post("/api/translate", async (req, res) => {
     return res.status(413).json({
       error: "Input is too long for the model context window.",
       details: `Estimated ${inputTokens} tokens, limit ${inputTokenLimit} tokens.`
+    });
+  }
+
+  let detectedSource = null;
+  if (wantsAuto) {
+    try {
+      const detection = await detectLanguage(inputText);
+      detectedSource = {
+        code: detection.code,
+        name: languageName(detection.code),
+        probability: detection.probability
+      };
+      normalizedSource = normalizeLangCode(detection.code);
+    } catch (err) {
+      return res.status(500).json({
+        error: "Language detection failed.",
+        details: err.message || String(err)
+      });
+    }
+  }
+
+  if (!normalizedSource) {
+    return res.status(400).json({
+      error:
+        "Invalid source language code. Use ISO 639-1 with optional region, or auto."
     });
   }
 
@@ -154,6 +202,16 @@ server.post("/api/translate", async (req, res) => {
         Connection: "keep-alive"
       });
       res.flushHeaders?.();
+
+      if (detectedSource) {
+        res.write(
+          `data: ${JSON.stringify({
+            detectedSourceLang: detectedSource.code,
+            detectedSourceName: detectedSource.name,
+            probability: detectedSource.probability
+          })}\n\n`
+        );
+      }
 
       if (!response.ok) {
         const detail = await response.text();
@@ -228,7 +286,10 @@ server.post("/api/translate", async (req, res) => {
     return res.json({
       translation,
       sourceLang: normalizedSource,
-      targetLang: normalizedTarget
+      targetLang: normalizedTarget,
+      detectedSourceLang: detectedSource?.code || null,
+      detectedSourceName: detectedSource?.name || null,
+      probability: detectedSource?.probability ?? null
     });
   } catch (err) {
     if (wantsStream) {

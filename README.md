@@ -17,6 +17,8 @@ Prerequisites:
 - Download a GGUF build of TranslateGemma from
   `https://huggingface.co/mradermacher/translategemma-4b-it-GGUF` and choose a
   quantization that fits your VRAM.
+- Optional: install the fastText CLI and download the language ID model
+  (`lid.176.bin`) if you want auto language detection.
 
 ### What is TranslateGemma (Gemma 3 Translate)?
 
@@ -38,6 +40,17 @@ enough to run locally with the right quantization.
 - Use the GGUF model from the Hugging Face link above and select the quant
   matching your GPU memory.
 
+### Auto language detection (fastText LID)
+
+This app can auto-detect the source language using fastText. To enable it:
+
+- Install the fastText CLI, or install the Python wheel and use the included
+  wrapper at `scripts/fasttext.cmd`.
+- Download `lid.176.bin` from `https://fasttext.cc/docs/en/language-identification.html`.
+- Set `FASTTEXT_MODEL` to the full path of `lid.176.bin`.
+- If the `fasttext` executable is not on PATH, set `FASTTEXT_CMD`.
+  On Windows, `scripts/fasttext.cmd` is auto-detected if present.
+
 1) Install dependencies:
 ```bash
 npm install
@@ -55,6 +68,7 @@ The UI will load while the model boots. The first translation may take a minute.
 - Streaming is enabled by default for faster feedback.
 - Light/dark theme toggle is in the header.
 - The language list is a curated 55-language set in `shared/languages.js` and can be edited if needed.
+- Source language supports `Auto detect` when fastText is configured.
 - Input length is capped based on the 2K token context window to avoid truncated outputs.
 - Long text mode splits large inputs into sentence-sized chunks, streams each chunk, and merges the results.
 - Prompt mode defaults to plain text instructions for compatibility; set `LLAMA_PROMPT_MODE=structured` to use the model's structured template.
@@ -73,6 +87,8 @@ The UI will load while the model boots. The first translation may take a minute.
 - `LLAMA_CONTEXT_TOKENS` (default: `2048`)
 - `LLAMA_MAX_OUTPUT_TOKENS` (default: `512`)
 - `LLAMA_PROMPT_OVERHEAD_TOKENS` (default: `120`)
+- `FASTTEXT_CMD` (default: `fasttext`)
+- `FASTTEXT_MODEL` (default: `models/lid.176.bin`)
 
 ## Translation contract
 
