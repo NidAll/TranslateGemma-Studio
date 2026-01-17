@@ -6,6 +6,8 @@ const LLAMA_HOST = process.env.LLAMA_HOST || "127.0.0.1";
 const LLAMA_PORT = process.env.LLAMA_PORT || "8033";
 const LLAMA_MODEL =
   process.env.LLAMA_MODEL || "mradermacher/translategemma-4b-it-GGUF:Q6_K";
+const LLAMA_FLASH_ATTN =
+  (process.env.LLAMA_FLASH_ATTN || "on").toLowerCase() === "off" ? "off" : "on";
 const DEFAULT_LLAMA_PATH_WIN = path.join("C:\\", "llama cpp", "llama-server.exe");
 const LLAMA_SERVER_CMD =
   process.env.LLAMA_SERVER_CMD ||
@@ -16,9 +18,19 @@ const LLAMA_SERVER_CMD =
 export const LLAMA_SERVER_URL =
   process.env.LLAMA_SERVER_URL || `http://${LLAMA_HOST}:${LLAMA_PORT}`;
 
+function getModelArgs() {
+  try {
+    if (LLAMA_MODEL && fs.existsSync(LLAMA_MODEL)) {
+      return ["-m", LLAMA_MODEL];
+    }
+  } catch (err) {
+    return ["-hf", LLAMA_MODEL];
+  }
+  return ["-hf", LLAMA_MODEL];
+}
+
 const DEFAULT_ARGS = [
-  "-hf",
-  LLAMA_MODEL,
+  ...getModelArgs(),
   "--jinja",
   "-c",
   "0",
@@ -27,7 +39,7 @@ const DEFAULT_ARGS = [
   "--port",
   LLAMA_PORT,
   "--flash-attn",
-  "on"
+  LLAMA_FLASH_ATTN
 ];
 
 let llamaProcess = null;

@@ -18,6 +18,22 @@ Local translation UI for `google/translategemma-4b-it` running on llama.cpp.
 - A TranslateGemma GGUF model file
 - Optional: fastText language ID model for auto detection
 
+### Quick setup script
+
+Windows (PowerShell):
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+```
+
+Linux:
+```bash
+bash scripts/setup.sh
+```
+
+The setup script checks for `llama-server`, offers a flash attention toggle,
+selects a quantization based on VRAM (or manual choice), and downloads the GGUF
+model into `models/`.
+
 ### 1) Get the model
 
 Download a GGUF build of TranslateGemma from:
@@ -116,6 +132,7 @@ path (or override `LLAMA_SERVER_ARGS`).
 - `LLAMA_CONTEXT_TOKENS` (default: `2048`)
 - `LLAMA_MAX_OUTPUT_TOKENS` (default: `512`)
 - `LLAMA_PROMPT_OVERHEAD_TOKENS` (default: `120`)
+- `LLAMA_FLASH_ATTN` (default: `on`, set to `off` to disable flash attention)
 - `FASTTEXT_CMD` (default: `fasttext`)
 - `FASTTEXT_MODEL` (default: `models/lid.176.bin`)
 
